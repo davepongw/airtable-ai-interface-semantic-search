@@ -12,6 +12,7 @@ import './style.css';
 
 // ---- config (custom properties, set in the interface properties panel) -----
 
+const APP_VERSION = 'v1.0.0'; // bump on every release so the interface shows what's live
 const MOVIES_TABLE_ID = 'tblkdQW07gtGW4UK5';
 const DEFAULT_WORKER_URL = 'https://claude-search-proxy.daveairtable.workers.dev';
 
@@ -608,6 +609,12 @@ function App() {
                         Claude semantic search
                     </span>
                     <span className="text-sm text-gray-gray500 dark:text-gray-gray400">&middot; {table.name}</span>
+                    <span
+                        className="text-xs text-gray-gray400 dark:text-gray-gray500"
+                        title="Released build version (bumps each release)"
+                    >
+                        {APP_VERSION}
+                    </span>
                     <div className="ml-auto flex items-center gap-2">
                         {(usage.input > 0 || usage.output > 0) && (
                             <span
