@@ -1,0 +1,12 @@
+name = "claude-search-proxy"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+
+# Secrets are NOT set here. Set them with `wrangler secret put`:
+#   wrangler secret put ANTHROPIC_API_KEY
+#   wrangler secret put AIRTABLE_PAT
+#   wrangler secret put PROXY_SECRET      (optional but recommended)
+#
+# Non-secret config can live here as plain vars:
+[vars]
+CLAUDE_MODEL = "claude-haiku-4-5"

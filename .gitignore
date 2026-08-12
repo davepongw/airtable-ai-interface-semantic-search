@@ -1,0 +1,14 @@
+# dependencies
+node_modules/
+**/node_modules/
+
+# build & cache artifacts
+**/.tmp/
+**/.wrangler/
+.DS_Store
+
+# abandoned base-extension attempt (kept locally, not shipped)
+/semantic_search/
+
+# portfolio draft copy (published to davew.me, not part of the code)
+/writeup.html
