@@ -28,7 +28,7 @@ Why route through a Worker at all, even for one base? Two reasons. The Anthropic
 ## The three folders
 
 - **`worker/`** — the Cloudflare Worker. Holds `ANTHROPIC_API_KEY`, `AIRTABLE_PAT`, and a `PROXY_SECRET`. Two endpoints: `/health` and `/search`. Uses Claude Haiku 4.5 with structured outputs so the filter and the ranking come back as guaranteed-valid JSON.
-- **`semantic_search_interface/`** — the Airtable interface extension (`@airtable/blocks@interface-alpha`, React 19, Tailwind). Config lives in the interface's properties panel (search table, Worker URL, proxy secret).
+- **`semantic_search_interface/`** — the Airtable interface extension (`@airtable/blocks@interface-alpha`, React 19, Tailwind). Config lives in the interface's properties panel: search table, Worker URL, proxy secret, and a **Search skill** (free-text instructions that teach Claude about this base and how to spot good movie integration opportunities). In use: chat search with **follow-up refine** (a follow-up prompt re-ranks the current results in context, cheap; **New search** starts a fresh scan), **Record filters** to narrow what's scanned, sortable/filterable columns, a live token counter, and click-a-row to open the record's detail page.
 - **`seed/`** — a one-shot script that fills the demo base with 1,000 movie titles plus linked employees and integration opportunities. Reads the PAT from an environment variable, never from a file.
 
 ## Setup
@@ -63,5 +63,6 @@ Add it to an interface page, then set **Worker URL** and **Proxy secret** in the
 - **Nothing secret is in this repo.** The Anthropic key, the PAT, and the proxy secret live in the Worker (via `wrangler secret`) or in your shell environment. The base ID here is an anonymized demo base.
 - **Full scan has a cost.** With no record filters, a search ranks every row, which is roughly one Claude call per 100 records. The token counter in the header makes that visible. Set a Record filter (say `Genre is Family`) to shrink the scan and the bill.
 - **Search modes.** Record filters narrow *what gets searched* (before fetch). The results box filters *what's shown* (after fetch). Both are there on purpose.
+- **Refining is cheap.** A follow-up prompt re-ranks only the current result set, with no re-scan, so iterating costs a fraction of the first search. New search resets the context.
 
 Built as a demo of what an AI-native Airtable interface can do. Fork it, point it at your own base, and go.

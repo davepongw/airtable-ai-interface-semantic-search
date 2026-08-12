@@ -2,6 +2,8 @@ import {
     initializeBlock,
     useBase,
     useCustomProperties,
+    useRecords,
+    expandRecord,
 } from '@airtable/blocks/interface/ui';
 import {FieldType} from '@airtable/blocks/interface/models';
 import {useEffect, useMemo, useRef, useState} from 'react';
@@ -26,6 +28,7 @@ function getCustomProperties(base) {
         {key: 'searchTable', label: 'Search table', type: 'table', defaultValue: defaultTable},
         {key: 'workerUrl', label: 'Worker URL', type: 'string', defaultValue: DEFAULT_WORKER_URL},
         {key: 'proxySecret', label: 'Proxy secret', type: 'string', defaultValue: ''},
+        {key: 'skill', label: 'Search skill (base instructions for Claude)', type: 'string', defaultValue: ''},
     ];
 }
 
@@ -182,6 +185,20 @@ function App() {
     const table = customPropertyValueByKey && customPropertyValueByKey.searchTable;
     const workerUrl = (customPropertyValueByKey && customPropertyValueByKey.workerUrl) || '';
     const proxySecret = (customPropertyValueByKey && customPropertyValueByKey.proxySecret) || '';
+    const skill = (customPropertyValueByKey && customPropertyValueByKey.skill) || '';
+
+    // Live records — used only to open a record's detail page when a row is clicked.
+    const liveRecords = useRecords(table || null);
+    const recordsById = useMemo(() => {
+        const m = new Map();
+        if (liveRecords) for (const rec of liveRecords) m.set(rec.id, rec);
+        return m;
+    }, [liveRecords]);
+    const canExpand = !!(table && table.hasPermissionToExpandRecords && table.hasPermissionToExpandRecords());
+    function openRecord(id) {
+        const rec = recordsById.get(id);
+        if (rec && canExpand) expandRecord(rec);
+    }
 
     const allFields = useMemo(() => {
         if (!table) return [];
@@ -278,32 +295,75 @@ function App() {
         }
         setError(null);
         const conversation = messagesRef.current.map((m) => ({role: m.role, content: m.content}));
+        const existing = results;
+        const isRefine = existing.length > 0; // a follow-up refines the current set, keeping context
         setMessages((m) => [...m, {role: 'user', content: promptText}]);
         setInput('');
-        setResults([]);
-        setResultPage(0);
-        setUsage({input: 0, output: 0});
         setBusy(true);
-        setProgress({kept: 0, scanned: 0});
 
         const schema = allFields.map((f) => ({name: f.name, type: f.type, options: f.choices}));
         const endpoint = workerUrl.replace(/\/+$/, '') + '/search';
-        const userFilter = buildUserFilter(filters, matchMode, fieldsByName);
-        const filterDesc = filters.length
-            ? filters.map(condLabel).join(matchMode === 'any' ? ' OR ' : ' AND ')
-            : null;
-
-        let offset = null;
-        let fieldsToSearch = null;
-        let kept = [];
-        let scanned = 0;
-        let usageIn = 0;
-        let usageOut = 0;
-        let clarified = false;
 
         try {
-            // Scan every record in scope (all records, or the user's filtered
-            // subset), one page at a time, until Airtable stops paginating.
+            if (isRefine) {
+                // Re-rank the EXISTING results against the new prompt — no re-scan.
+                setProgress({kept: existing.length, scanned: existing.length});
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {'content-type': 'application/json', 'x-proxy-secret': proxySecret},
+                    body: JSON.stringify({
+                        baseId: base.id,
+                        tableId: table.id,
+                        tableName: table.name,
+                        prompt: promptText,
+                        conversation,
+                        fields: selectedFields,
+                        schema,
+                        skill,
+                        records: existing.map((r) => ({id: r.id, fields: r.fields})),
+                    }),
+                });
+                if (!res.ok) throw new Error(`Worker ${res.status}: ${(await res.text()).slice(0, 200)}`);
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                const ui = (data.usage && data.usage.input_tokens) || 0;
+                const uo = (data.usage && data.usage.output_tokens) || 0;
+                setUsage((u) => ({input: u.input + ui, output: u.output + uo}));
+                const refined = data.records || [];
+                setResults(refined);
+                setResultPage(0);
+                setMessages((m) => [
+                    ...m,
+                    {
+                        role: 'assistant',
+                        content: `Refined to ${refined.length} result${
+                            refined.length === 1 ? '' : 's'
+                        } (from ${existing.length}). Tokens: ${ui.toLocaleString()} in / ${uo.toLocaleString()} out.`,
+                    },
+                ]);
+                return;
+            }
+
+            // Fresh search: full scan of the in-scope records, starting a clean context.
+            setResults([]);
+            setResultPage(0);
+            setUsage({input: 0, output: 0});
+            setProgress({kept: 0, scanned: 0});
+
+            const userFilter = buildUserFilter(filters, matchMode, fieldsByName);
+            const filterDesc = filters.length
+                ? filters.map(condLabel).join(matchMode === 'any' ? ' OR ' : ' AND ')
+                : null;
+
+            let offset = null;
+            let fieldsToSearch = null;
+            let kept = [];
+            let scanned = 0;
+            let usageIn = 0;
+            let usageOut = 0;
+            let clarified = false;
+
+            // Scan every record in scope, one page at a time, until Airtable stops paginating.
             for (let guard = 0; guard < MAX_PAGES; guard++) {
                 const res = await fetch(endpoint, {
                     method: 'POST',
@@ -316,6 +376,7 @@ function App() {
                         conversation,
                         fields: selectedFields,
                         schema,
+                        skill,
                         userFilter,
                         pageSize: PAGE_SIZE,
                         offset,
@@ -623,8 +684,9 @@ function App() {
                         <p className="text-sm text-gray-gray500 dark:text-gray-gray400">
                             Ask in plain language &mdash; e.g. &ldquo;family films that would suit a trampoline
                             park&rdquo;. Every record in {table.name} is scanned and ranked (use <b>Record filters</b> to
-                            narrow the set). Results show 100 per page. If it&rsquo;s unclear which fields you mean,
-                            it&rsquo;ll ask first. Re-prompt to refine.
+                            narrow the set and cut tokens). Results show 100 per page. A follow-up prompt <b>refines</b>{' '}
+                            these results in context; hit <b>New search</b> to start fresh. Click a row to open the
+                            record.
                         </p>
                     )}
                     {messages.map((m, i) => (
@@ -750,7 +812,14 @@ function App() {
                                 {pagedRows.map((r) => (
                                     <tr
                                         key={r.id}
-                                        className="border-t border-gray-gray200 dark:border-gray-gray700 align-top"
+                                        onClick={() => openRecord(r.id)}
+                                        title={canExpand ? 'Open record' : undefined}
+                                        className={
+                                            'border-t border-gray-gray200 dark:border-gray-gray700 align-top ' +
+                                            (canExpand
+                                                ? 'cursor-pointer hover:bg-gray-gray50 dark:hover:bg-gray-gray800'
+                                                : '')
+                                        }
                                     >
                                         <td className="px-3 py-2">
                                             <span

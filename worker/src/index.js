@@ -69,6 +69,36 @@ async function handleSearch(request, env) {
   let usageIn = 0;
   let usageOut = 0;
 
+  const skill = typeof body.skill === "string" ? body.skill.trim() : "";
+
+  // Refine mode: re-rank an EXISTING result set against a new prompt with no
+  // Airtable fetch. Holds the same records in context; far cheaper than a scan.
+  const refineRecords = Array.isArray(body.records) ? body.records : null;
+  if (refineRecords && prompt) {
+    const out = [];
+    for (let i = 0; i < refineRecords.length; i += 100) {
+      const chunk = refineRecords.slice(i, i + 100).map((r) => ({ id: r.id, fields: r.fields || {} }));
+      const ranked = await rankPage({ env, model, prompt, conversation, records: chunk, fields, skill });
+      usageIn += ranked.usage.input_tokens;
+      usageOut += ranked.usage.output_tokens;
+      const byId = new Map(ranked.results.map((x) => [x.id, x]));
+      for (const r of chunk) {
+        const v = byId.get(r.id);
+        if (v && v.relevant === false) continue;
+        out.push({ id: r.id, fields: r.fields, _score: v ? v.score : null, _reason: v ? v.reason : "" });
+      }
+    }
+    out.sort((a, b) => (b._score ?? 0) - (a._score ?? 0));
+    return json({
+      records: out,
+      refined: true,
+      rawCount: refineRecords.length,
+      offset: null,
+      done: true,
+      usage: { input_tokens: usageIn, output_tokens: usageOut },
+    });
+  }
+
   // The record scope is controlled by the USER's structured filter (or nothing
   // = a full scan of every record). We do NOT auto-narrow. Claude is used only
   // to clarify ambiguous intent (when no user filter is set) and to re-rank.
@@ -77,7 +107,7 @@ async function handleSearch(request, env) {
   let fieldsToSearch = Array.isArray(body.fieldsToSearch) ? body.fieldsToSearch : null;
 
   if (!userFilter && prompt && !offset) {
-    const gen = await generateFilter({ env, model, prompt, conversation, schema, tableName });
+    const gen = await generateFilter({ env, model, prompt, conversation, schema, tableName, skill });
     usageIn += gen.usage.input_tokens;
     usageOut += gen.usage.output_tokens;
     if (gen.needsClarification) {
@@ -106,7 +136,7 @@ async function handleSearch(request, env) {
   // 3. Re-rank this page by relevance to the prompt.
   let records = page.records.map((r) => ({ id: r.id, fields: r.fields, _score: null, _reason: "" }));
   if (rerank && prompt && records.length) {
-    const ranked = await rankPage({ env, model, prompt, conversation, records, fields });
+    const ranked = await rankPage({ env, model, prompt, conversation, records, fields, skill });
     usageIn += ranked.usage.input_tokens;
     usageOut += ranked.usage.output_tokens;
     const byId = new Map(ranked.results.map((x) => [x.id, x]));
@@ -202,12 +232,12 @@ function transcript(conversation, prompt) {
   return lines.join("\n");
 }
 
-async function generateFilter({ env, model, prompt, conversation, schema, tableName }) {
+async function generateFilter({ env, model, prompt, conversation, schema, tableName, skill }) {
   const fieldLines = (schema || [])
     .map((f) => `- {${f.name}} (${f.type})${f.options ? ` choices: ${f.options.join(", ")}` : ""}`)
     .join("\n");
 
-  const system = [
+  const systemLines = [
     "You translate a natural-language search request into an Airtable filterByFormula string, and decide which fields to search.",
     "Rules:",
     "- Wrap every field name in curly braces, e.g. {Genre}.",
@@ -220,7 +250,9 @@ async function generateFilter({ env, model, prompt, conversation, schema, tableN
     "Ambiguity:",
     "- If it is genuinely unclear WHICH field(s) the user means (the query term could reasonably target several different fields), set needsClarification=true, put a short question naming the candidate fields in clarificationQuestion, list those fields in fieldsToSearch, and leave filterByFormula empty.",
     "- If the fields are clear from the query or the conversation, set needsClarification=false and proceed. Do NOT ask when the intent is obvious. Once the user has answered a clarification earlier in the conversation, proceed (needsClarification=false).",
-  ].join("\n");
+  ];
+  if (skill) systemLines.push("", "Base-specific guidance (use this to interpret intent):", skill);
+  const system = systemLines.join("\n");
 
   const userText = [
     `Table: ${tableName}`,
@@ -250,7 +282,7 @@ async function generateFilter({ env, model, prompt, conversation, schema, tableN
   return { ...result, usage };
 }
 
-async function rankPage({ env, model, prompt, conversation, records, fields }) {
+async function rankPage({ env, model, prompt, conversation, records, fields, skill }) {
   const compact = records.map((r) => {
     const out = { id: r.id };
     for (const f of fields) {
@@ -263,13 +295,15 @@ async function rankPage({ env, model, prompt, conversation, records, fields }) {
     return out;
   });
 
-  const system = [
+  const systemLines = [
     "You rank Airtable records by how well they match a user's search request.",
     "For EACH record return: id, relevant (boolean), score (0-100 integer), and a short reason (AT MOST 8 words).",
     "Use the FULL 0-100 range and differentiate scores: 80-100 strong match, 40-70 partial, below 40 weak. Do NOT give everything the same score.",
     "Mark relevant=false for records that clearly do not match. Be inclusive when unsure.",
     "Return one result object per input record, preserving the ids exactly.",
-  ].join("\n");
+  ];
+  if (skill) systemLines.push("", "Base-specific guidance (follow this when scoring):", skill);
+  const system = systemLines.join("\n");
 
   const userText = [
     "Conversation so far:",
