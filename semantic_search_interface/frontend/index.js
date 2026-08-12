@@ -243,8 +243,18 @@ function App() {
     }, [liveRecords]);
     const canExpand = !!(table && table.hasPermissionToExpandRecords && table.hasPermissionToExpandRecords());
     function openRecord(id) {
+        if (!id) return;
+        // In-scope records (loaded in this element's query container) open in the
+        // interface's Record Detail page. Everything else — most full-table search
+        // hits — opens in Airtable, since the SDK can't expand records it hasn't loaded.
         const rec = recordsById.get(id);
-        if (rec && canExpand) expandRecord(rec);
+        if (rec && canExpand) {
+            expandRecord(rec);
+            return;
+        }
+        if (base && table) {
+            window.open(`https://airtable.com/${base.id}/${table.id}/${id}`, '_blank', 'noopener');
+        }
     }
 
     const allFields = useMemo(() => {
@@ -898,11 +908,8 @@ function App() {
                                     <div
                                         key={r.id}
                                         onClick={() => openRecord(r.id)}
-                                        title={canExpand ? 'Open record' : undefined}
-                                        className={
-                                            'rounded-lg overflow-hidden border border-gray-gray200 dark:border-gray-gray700 bg-white dark:bg-gray-gray800 flex flex-col ' +
-                                            (canExpand ? 'cursor-pointer hover:shadow-md' : '')
-                                        }
+                                        title="Open record"
+                                        className="rounded-lg overflow-hidden border border-gray-gray200 dark:border-gray-gray700 bg-white dark:bg-gray-gray800 flex flex-col cursor-pointer hover:shadow-md"
                                     >
                                         <div
                                             className="relative bg-gray-gray100 dark:bg-gray-gray700"
@@ -984,13 +991,8 @@ function App() {
                                     <tr
                                         key={r.id}
                                         onClick={() => openRecord(r.id)}
-                                        title={canExpand ? 'Open record' : undefined}
-                                        className={
-                                            'border-t border-gray-gray200 dark:border-gray-gray700 align-top ' +
-                                            (canExpand
-                                                ? 'cursor-pointer hover:bg-gray-gray50 dark:hover:bg-gray-gray800'
-                                                : '')
-                                        }
+                                        title="Open record"
+                                        className="border-t border-gray-gray200 dark:border-gray-gray700 align-top cursor-pointer hover:bg-gray-gray50 dark:hover:bg-gray-gray800"
                                     >
                                         <td className="px-3 py-2">
                                             <span
