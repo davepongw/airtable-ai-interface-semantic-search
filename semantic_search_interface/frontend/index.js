@@ -18,18 +18,45 @@ const PAGE_SIZE = 100; // records fetched per Worker/Airtable page
 const RESULTS_PER_PAGE = 100; // results shown per page in the grid
 const MAX_PAGES = 5000; // hard safety cap on the full-table scan
 
+// Field types that can plausibly hold an image (URL, attachment, or text URL).
+const IMAGE_FIELD_TYPES = new Set([
+    FieldType.URL,
+    FieldType.MULTIPLE_ATTACHMENTS,
+    FieldType.SINGLE_LINE_TEXT,
+    FieldType.MULTILINE_TEXT,
+    FieldType.RICH_TEXT,
+    FieldType.AI_TEXT,
+]);
+
 // Defined outside the component for a stable identity (required by the SDK).
 function getCustomProperties(base) {
     const defaultTable =
         base.getTableByIdIfExists(MOVIES_TABLE_ID) ||
         base.tables.find((t) => t.name.toLowerCase().includes('movie')) ||
         base.tables[0];
-    return [
+    const imageAllowed = (fld) => IMAGE_FIELD_TYPES.has(fld.config ? fld.config.type : fld.type);
+    const defaultImage =
+        defaultTable &&
+        defaultTable.fields.find(
+            (f) => /image|poster|promo|thumbnail|art|cover|photo/i.test(f.name) && IMAGE_FIELD_TYPES.has(f.type),
+        );
+    const props = [
         {key: 'searchTable', label: 'Search table', type: 'table', defaultValue: defaultTable},
         {key: 'workerUrl', label: 'Worker URL', type: 'string', defaultValue: DEFAULT_WORKER_URL},
         {key: 'proxySecret', label: 'Proxy secret', type: 'string', defaultValue: ''},
         {key: 'skill', label: 'Search skill (base instructions for Claude)', type: 'string', defaultValue: ''},
     ];
+    if (defaultTable) {
+        props.push({
+            key: 'imageField',
+            label: 'Promo image field',
+            type: 'field',
+            table: defaultTable,
+            shouldFieldBeAllowed: imageAllowed,
+            defaultValue: defaultImage || undefined,
+        });
+    }
+    return props;
 }
 
 // ---- field helpers ---------------------------------------------------------
@@ -145,6 +172,24 @@ function condLabel(c) {
     return `${c.field} ${op} ${c.value}`;
 }
 
+// Pull an image URL out of a cell value (string URL, attachment array, or object).
+function imageUrlFromValue(v) {
+    if (v == null) return null;
+    if (typeof v === 'string') return v.trim() || null;
+    if (Array.isArray(v)) {
+        const a = v[0];
+        if (!a) return null;
+        if (typeof a === 'string') return a;
+        const th = a.thumbnails && (a.thumbnails.large || a.thumbnails.full || a.thumbnails.small);
+        return (th && th.url) || a.url || null;
+    }
+    if (typeof v === 'object') {
+        if (typeof v.url === 'string') return v.url;
+        if (typeof v.value === 'string') return v.value.trim() || null;
+    }
+    return null;
+}
+
 // Format a raw Airtable REST cell value for display.
 function formatValue(v) {
     if (v == null) return '';
@@ -186,6 +231,8 @@ function App() {
     const workerUrl = (customPropertyValueByKey && customPropertyValueByKey.workerUrl) || '';
     const proxySecret = (customPropertyValueByKey && customPropertyValueByKey.proxySecret) || '';
     const skill = (customPropertyValueByKey && customPropertyValueByKey.skill) || '';
+    const imageField = customPropertyValueByKey && customPropertyValueByKey.imageField;
+    const imageFieldName = imageField && imageField.name ? imageField.name : null;
 
     // Live records — used only to open a record's detail page when a row is clicked.
     const liveRecords = useRecords(table || null);
@@ -242,6 +289,7 @@ function App() {
     const [error, setError] = useState(null);
     const [input, setInput] = useState('');
     const [showColumns, setShowColumns] = useState(false);
+    const [layout, setLayout] = useState('grid'); // 'grid' | 'card'
 
     // record filters (narrow which records are searched)
     const [filters, setFilters] = useState([]);
@@ -303,6 +351,11 @@ function App() {
 
         const schema = allFields.map((f) => ({name: f.name, type: f.type, options: f.choices}));
         const endpoint = workerUrl.replace(/\/+$/, '') + '/search';
+        // Always fetch the image field so it's available for card/grid rendering.
+        const fetchFields =
+            imageFieldName && !selectedFields.includes(imageFieldName)
+                ? [...selectedFields, imageFieldName]
+                : selectedFields;
 
         try {
             if (isRefine) {
@@ -374,7 +427,7 @@ function App() {
                         tableName: table.name,
                         prompt: promptText,
                         conversation,
-                        fields: selectedFields,
+                        fields: fetchFields,
                         schema,
                         skill,
                         userFilter,
@@ -771,6 +824,22 @@ function App() {
                             {rows.length} result{rows.length === 1 ? '' : 's'}
                             {rows.length > 0 && ` · showing ${pageStart + 1}–${pageStart + pagedRows.length}`}
                         </span>
+                        <div className="inline-flex rounded border border-gray-gray300 dark:border-gray-gray600 overflow-hidden">
+                            {['grid', 'card'].map((L) => (
+                                <button
+                                    key={L}
+                                    className={
+                                        'px-2 py-0.5 text-sm ' +
+                                        (layout === L
+                                            ? 'bg-blue-blue text-white'
+                                            : 'text-gray-gray600 dark:text-gray-gray300 hover:bg-gray-gray100 dark:hover:bg-gray-gray700')
+                                    }
+                                    onClick={() => setLayout(L)}
+                                >
+                                    {L === 'grid' ? 'Grid' : 'Cards'}
+                                </button>
+                            ))}
+                        </div>
                         <select className={inputCls} value={filterField} onChange={(e) => setFilterField(e.target.value)}>
                             <option value="__all__">All fields</option>
                             {displayColumns.map((c) => (
@@ -811,7 +880,74 @@ function App() {
 
                 {/* results grid */}
                 <div className="flex-1 overflow-auto">
-                    {results.length > 0 && (
+                    {results.length > 0 && layout === 'card' && (
+                        <div className="p-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                            {pagedRows.map((r) => {
+                                const img = imageFieldName ? imageUrlFromValue(r.fields[imageFieldName]) : null;
+                                const title = (primaryName && formatValue(r.fields[primaryName])) || '(untitled)';
+                                return (
+                                    <div
+                                        key={r.id}
+                                        onClick={() => openRecord(r.id)}
+                                        title={canExpand ? 'Open record' : undefined}
+                                        className={
+                                            'rounded-lg overflow-hidden border border-gray-gray200 dark:border-gray-gray700 bg-white dark:bg-gray-gray800 flex flex-col ' +
+                                            (canExpand ? 'cursor-pointer hover:shadow-md' : '')
+                                        }
+                                    >
+                                        <div
+                                            className="relative bg-gray-gray100 dark:bg-gray-gray700"
+                                            style={{aspectRatio: '2 / 3'}}
+                                        >
+                                            {img ? (
+                                                <img
+                                                    src={img}
+                                                    alt={title}
+                                                    loading="lazy"
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center text-xs text-gray-gray400">
+                                                    No image
+                                                </div>
+                                            )}
+                                            <span
+                                                className={
+                                                    'absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-xs font-semibold ' +
+                                                    scoreColor(r._score)
+                                                }
+                                            >
+                                                {r._score == null ? '—' : r._score}
+                                            </span>
+                                        </div>
+                                        <div className="p-2 flex flex-col gap-1 flex-1">
+                                            <div className="font-medium text-sm text-gray-gray800 dark:text-gray-gray100 line-clamp-2">
+                                                {title}
+                                            </div>
+                                            {displayColumns
+                                                .filter((c) => c !== primaryName && c !== imageFieldName)
+                                                .slice(0, 3)
+                                                .map((c) => (
+                                                    <div
+                                                        key={c}
+                                                        className="text-xs text-gray-gray600 dark:text-gray-gray300 truncate"
+                                                    >
+                                                        <span className="text-gray-gray400">{c}: </span>
+                                                        {formatValue(r.fields[c])}
+                                                    </div>
+                                                ))}
+                                            {r._reason && (
+                                                <div className="text-xs text-gray-gray500 dark:text-gray-gray400 mt-auto pt-1">
+                                                    {r._reason}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                    {results.length > 0 && layout !== 'card' && (
                         <table className="w-full text-sm border-collapse">
                             <thead className="sticky top-0 bg-gray-gray50 dark:bg-gray-gray800">
                                 <tr>
@@ -859,7 +995,16 @@ function App() {
                                         </td>
                                         {displayColumns.map((c) => (
                                             <td key={c} className="px-3 py-2 text-gray-gray800 dark:text-gray-gray100">
-                                                {formatValue(r.fields[c])}
+                                                {c === imageFieldName && imageUrlFromValue(r.fields[c]) ? (
+                                                    <img
+                                                        src={imageUrlFromValue(r.fields[c])}
+                                                        alt=""
+                                                        loading="lazy"
+                                                        className="h-12 w-auto rounded object-cover"
+                                                    />
+                                                ) : (
+                                                    formatValue(r.fields[c])
+                                                )}
                                             </td>
                                         ))}
                                         <td className="px-3 py-2 text-gray-gray500 dark:text-gray-gray400 max-w-xs">
