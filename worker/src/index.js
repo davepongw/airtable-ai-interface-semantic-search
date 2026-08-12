@@ -14,6 +14,7 @@
 //                    calls repeatedly, appending pages until it hits the
 //                    user's record limit or offset is null.
 
+const WORKER_VERSION = "v1.0.0"; // bump on every deploy so /health confirms what's live
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
 const AIRTABLE_API = "https://api.airtable.com/v0";
@@ -26,7 +27,7 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === "GET" && url.pathname === "/health") {
-      return cors(json({ ok: true, model: env.CLAUDE_MODEL || "claude-haiku-4-5" }));
+      return cors(json({ ok: true, version: WORKER_VERSION, model: env.CLAUDE_MODEL || "claude-haiku-4-5" }));
     }
 
     if (request.method === "POST" && url.pathname === "/search") {
