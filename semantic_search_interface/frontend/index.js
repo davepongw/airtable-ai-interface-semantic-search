@@ -241,20 +241,12 @@ function App() {
         if (liveRecords) for (const rec of liveRecords) m.set(rec.id, rec);
         return m;
     }, [liveRecords]);
-    const canExpand = !!(table && table.hasPermissionToExpandRecords && table.hasPermissionToExpandRecords());
     function openRecord(id) {
         if (!id) return;
-        // In-scope records (loaded in this element's query container) open in the
-        // interface's Record Detail page. Everything else — most full-table search
-        // hits — opens in Airtable, since the SDK can't expand records it hasn't loaded.
+        // Open the record in the interface's Record Detail layout (the one set in
+        // the interface editor). Works for records this element has loaded.
         const rec = recordsById.get(id);
-        if (rec && canExpand) {
-            expandRecord(rec);
-            return;
-        }
-        if (base && table) {
-            window.open(`https://airtable.com/${base.id}/${table.id}/${id}`, '_blank', 'noopener');
-        }
+        if (rec) expandRecord(rec);
     }
 
     const allFields = useMemo(() => {
