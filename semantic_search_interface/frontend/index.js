@@ -12,7 +12,7 @@ import './style.css';
 
 // ---- config (custom properties, set in the interface properties panel) -----
 
-const APP_VERSION = 'v1.0.0'; // bump on every release so the interface shows what's live
+const APP_VERSION = 'v1.0.1'; // bump on every release so the interface shows what's live
 const MOVIES_TABLE_ID = 'tblkdQW07gtGW4UK5';
 const DEFAULT_WORKER_URL = 'https://claude-search-proxy.daveairtable.workers.dev';
 
@@ -48,7 +48,7 @@ function getCustomProperties(base) {
         {key: 'skill', label: 'Search skill (base instructions for Claude)', type: 'string', defaultValue: ''},
         {
             key: 'baseFilter',
-            label: 'Base filter (Airtable formula) — match to the page Source',
+            label: 'Locked scope filter (Airtable formula) — match to the page Source',
             type: 'string',
             defaultValue: '',
         },
@@ -413,10 +413,18 @@ function App() {
             setUsage({input: 0, output: 0});
             setProgress({kept: 0, scanned: 0});
 
-            const userFilter = buildUserFilter(filters, matchMode, fieldsByName);
-            const filterDesc = filters.length
-                ? filters.map(condLabel).join(matchMode === 'any' ? ' OR ' : ' AND ')
-                : null;
+            // Combine the locked scope (base) with the user's conditions so a single
+            // filter goes to the Worker. Any Worker version applies this (it's the
+            // same userFilter path that predates the base filter), so no redeploy needed.
+            const userConds = buildUserFilter(filters, matchMode, fieldsByName);
+            const baseTrim = baseFilter.trim();
+            const combined = [baseTrim, userConds].filter(Boolean);
+            const userFilter =
+                combined.length === 0 ? '' : combined.length === 1 ? combined[0] : `AND(${combined.join(', ')})`;
+            const descParts = [];
+            if (baseTrim) descParts.push(`locked scope ${baseTrim}`);
+            if (filters.length) descParts.push(filters.map(condLabel).join(matchMode === 'any' ? ' OR ' : ' AND '));
+            const filterDesc = descParts.length ? descParts.join('; ') : null;
 
             let offset = null;
             let fieldsToSearch = null;
@@ -440,7 +448,6 @@ function App() {
                         fields: fetchFields,
                         schema,
                         skill,
-                        baseFilter,
                         userFilter,
                         pageSize: PAGE_SIZE,
                         offset,
@@ -666,6 +673,19 @@ function App() {
                                 &mdash; only matching records are searched
                             </span>
                         </div>
+                        {baseFilter.trim() && (
+                            <div className="mb-3 rounded border border-gray-gray200 dark:border-gray-gray600 bg-white dark:bg-gray-gray900 p-2">
+                                <div className="text-xs text-gray-gray400 dark:text-gray-gray500 mb-1">
+                                    🔒 Locked scope (set by the interface builder, always applied)
+                                </div>
+                                <div className="text-xs font-mono text-gray-gray600 dark:text-gray-gray300 break-all">
+                                    {baseFilter.trim()}
+                                </div>
+                                <div className="text-xs text-gray-gray400 dark:text-gray-gray500 mt-1">
+                                    Add conditions below to narrow further.
+                                </div>
+                            </div>
+                        )}
                         {filters.length === 0 && (
                             <p className="text-sm text-gray-gray500 dark:text-gray-gray400 mb-2">
                                 No conditions yet. Add one to narrow what Claude searches (and cut tokens).
