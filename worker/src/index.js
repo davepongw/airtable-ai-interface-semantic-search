@@ -104,6 +104,10 @@ async function handleSearch(request, env) {
   // to clarify ambiguous intent (when no user filter is set) and to re-rank.
   const userFilter =
     typeof body.userFilter === "string" && body.userFilter.trim() ? body.userFilter.trim() : "";
+  // Config-layer scope filter (set by the builder; should match the interface
+  // page's Source filter so the element loads exactly what Claude can search).
+  const baseFilter =
+    typeof body.baseFilter === "string" && body.baseFilter.trim() ? body.baseFilter.trim() : "";
   let fieldsToSearch = Array.isArray(body.fieldsToSearch) ? body.fieldsToSearch : null;
 
   if (!userFilter && prompt && !offset) {
@@ -124,12 +128,15 @@ async function handleSearch(request, env) {
     fieldsToSearch = gen.fieldsToSearch || [];
   }
 
-  const filterFormula = userFilter;
+  // Airtable scope = the config base filter AND the user's front-end filter.
+  const filterParts = [baseFilter, userFilter].filter(Boolean);
+  const filterFormula =
+    filterParts.length === 0 ? "" : filterParts.length === 1 ? filterParts[0] : `AND(${filterParts.join(", ")})`;
 
-  // 2. Fetch ONE page from Airtable (scope = the user's filter, or everything).
+  // 2. Fetch ONE page from Airtable (scope = base filter ∩ user filter, or everything).
   const page = await fetchPage({ env, baseId, tableId, fields, pageSize: clampedPageSize, offset, filterFormula });
-  if (page.error && page.status === 422 && userFilter) {
-    return json({ error: "Your filter is invalid for Airtable: " + page.message }, 400);
+  if (page.error && page.status === 422 && (userFilter || baseFilter)) {
+    return json({ error: "A filter is invalid for Airtable: " + page.message }, 400);
   }
   if (page.error) return json({ error: page.message, airtableStatus: page.status }, 502);
 

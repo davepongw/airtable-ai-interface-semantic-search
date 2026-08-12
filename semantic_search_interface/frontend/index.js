@@ -45,6 +45,12 @@ function getCustomProperties(base) {
         {key: 'searchTable', label: 'Search table', type: 'table', defaultValue: defaultTable},
         {key: 'workerUrl', label: 'Worker URL', type: 'string', defaultValue: DEFAULT_WORKER_URL},
         {key: 'skill', label: 'Search skill (base instructions for Claude)', type: 'string', defaultValue: ''},
+        {
+            key: 'baseFilter',
+            label: 'Base filter (Airtable formula) — match to the page Source',
+            type: 'string',
+            defaultValue: '',
+        },
     ];
     if (defaultTable) {
         props.push({
@@ -231,6 +237,7 @@ function App() {
     const workerUrl = (customPropertyValueByKey && customPropertyValueByKey.workerUrl) || '';
     const proxySecret = PROXY_SECRET; // from the gitignored frontend/config.js, not the properties panel
     const skill = (customPropertyValueByKey && customPropertyValueByKey.skill) || '';
+    const baseFilter = (customPropertyValueByKey && customPropertyValueByKey.baseFilter) || '';
     const imageField = customPropertyValueByKey && customPropertyValueByKey.imageField;
     const imageFieldName = imageField && imageField.name ? imageField.name : null;
 
@@ -432,6 +439,7 @@ function App() {
                         fields: fetchFields,
                         schema,
                         skill,
+                        baseFilter,
                         userFilter,
                         pageSize: PAGE_SIZE,
                         offset,
