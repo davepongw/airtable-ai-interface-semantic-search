@@ -545,8 +545,17 @@ function App() {
                                 🎟 {tokenLabel}
                             </span>
                         )}
-                        <button className={btnCls} onClick={() => setShowFilters((s) => !s)}>
-                            Record filters ({filters.length})
+                        <button
+                            className={
+                                'text-sm px-2 py-1 rounded border inline-flex items-center gap-1.5 ' +
+                                (filters.length
+                                    ? 'border-blue-blue text-blue-blue font-medium'
+                                    : 'border-gray-gray300 dark:border-gray-gray600 text-gray-gray700 dark:text-gray-gray200 hover:bg-gray-gray100 dark:hover:bg-gray-gray700')
+                            }
+                            onClick={() => setShowFilters((s) => !s)}
+                        >
+                            <FunnelIcon />
+                            {filters.length ? `Filter (${filters.length})` : 'Filter'}
                         </button>
                         <button className={btnCls} onClick={() => setShowColumns((s) => !s)}>
                             Columns ({selectedFields.length})
@@ -568,24 +577,40 @@ function App() {
                     </div>
                 </div>
 
-                {/* record filters panel */}
+                {/* filter panel (native-style) */}
                 {showFilters && (
                     <div className="px-4 py-3 border-b border-gray-gray200 dark:border-gray-gray700 bg-gray-gray50 dark:bg-gray-gray800">
-                        <div className="flex items-center gap-2 mb-2 text-sm text-gray-gray700 dark:text-gray-gray200">
-                            <span>Match</span>
-                            <select className={inputCls} value={matchMode} onChange={(e) => setMatchMode(e.target.value)}>
-                                <option value="all">all</option>
-                                <option value="any">any</option>
-                            </select>
-                            <span>of these — only matching records are searched (press Search to apply):</span>
+                        <div className="flex items-center gap-1.5 mb-2 text-sm font-medium text-gray-gray700 dark:text-gray-gray200">
+                            <FunnelIcon />
+                            Filter
+                            <span className="font-normal text-gray-gray500 dark:text-gray-gray400">
+                                &mdash; only matching records are searched
+                            </span>
                         </div>
-                        {filters.map((c) => {
+                        {filters.length === 0 && (
+                            <p className="text-sm text-gray-gray500 dark:text-gray-gray400 mb-2">
+                                No conditions yet. Add one to narrow what Claude searches (and cut tokens).
+                            </p>
+                        )}
+                        {filters.map((c, i) => {
                             const f = fieldsByName[c.field];
                             const type = f && f.type;
                             const isCheckbox = type === FieldType.CHECKBOX;
                             const isSelect = type === FieldType.SINGLE_SELECT || type === FieldType.MULTIPLE_SELECTS;
                             return (
                                 <div key={c.id} className="flex items-center gap-2 mb-2 flex-wrap">
+                                    {i === 0 ? (
+                                        <span className="w-16 text-sm text-gray-gray500 dark:text-gray-gray400">Where</span>
+                                    ) : (
+                                        <select
+                                            className={inputCls + ' w-16'}
+                                            value={matchMode}
+                                            onChange={(e) => setMatchMode(e.target.value)}
+                                        >
+                                            <option value="all">and</option>
+                                            <option value="any">or</option>
+                                        </select>
+                                    )}
                                     <select
                                         className={inputCls}
                                         value={c.field}
@@ -653,6 +678,7 @@ function App() {
                                     Clear all
                                 </button>
                             )}
+                            <span className="text-xs text-gray-gray400 ml-auto">Press Search to apply</span>
                         </div>
                     </div>
                 )}
@@ -847,6 +873,14 @@ function App() {
                 </div>
             </div>
         </Shell>
+    );
+}
+
+function FunnelIcon() {
+    return (
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M2 3h12l-4.6 5.6v4.2l-2.8 1.4V8.6L2 3z" fill="currentColor" />
+        </svg>
     );
 }
 
