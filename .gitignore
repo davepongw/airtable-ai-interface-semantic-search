@@ -12,3 +12,6 @@ node_modules/
 
 # portfolio draft copy (published to davew.me, not part of the code)
 /writeup.html
+
+# local secret for the extension (never commit)
+semantic_search_interface/frontend/config.js

@@ -7,6 +7,7 @@ import {
 } from '@airtable/blocks/interface/ui';
 import {FieldType} from '@airtable/blocks/interface/models';
 import {useEffect, useMemo, useRef, useState} from 'react';
+import {PROXY_SECRET} from './config';
 import './style.css';
 
 // ---- config (custom properties, set in the interface properties panel) -----
@@ -43,7 +44,6 @@ function getCustomProperties(base) {
     const props = [
         {key: 'searchTable', label: 'Search table', type: 'table', defaultValue: defaultTable},
         {key: 'workerUrl', label: 'Worker URL', type: 'string', defaultValue: DEFAULT_WORKER_URL},
-        {key: 'proxySecret', label: 'Proxy secret', type: 'string', defaultValue: ''},
         {key: 'skill', label: 'Search skill (base instructions for Claude)', type: 'string', defaultValue: ''},
     ];
     if (defaultTable) {
@@ -229,7 +229,7 @@ function App() {
 
     const table = customPropertyValueByKey && customPropertyValueByKey.searchTable;
     const workerUrl = (customPropertyValueByKey && customPropertyValueByKey.workerUrl) || '';
-    const proxySecret = (customPropertyValueByKey && customPropertyValueByKey.proxySecret) || '';
+    const proxySecret = PROXY_SECRET; // from the gitignored frontend/config.js, not the properties panel
     const skill = (customPropertyValueByKey && customPropertyValueByKey.skill) || '';
     const imageField = customPropertyValueByKey && customPropertyValueByKey.imageField;
     const imageFieldName = imageField && imageField.name ? imageField.name : null;
@@ -568,8 +568,17 @@ function App() {
         return (
             <Shell>
                 <Notice title="Finish configuration">
-                    In the properties panel, set the <b>Worker URL</b> and <b>Proxy secret</b> to match your Cloudflare
-                    Worker. Search table: <b>{table.name}</b>.
+                    {!workerUrl ? (
+                        <>
+                            Set the <b>Worker URL</b> in the properties panel.
+                        </>
+                    ) : (
+                        <>
+                            The proxy secret isn&rsquo;t set. Paste your Worker&rsquo;s <b>PROXY_SECRET</b> into{' '}
+                            <code>frontend/config.js</code>, then re-release.
+                        </>
+                    )}{' '}
+                    Search table: <b>{table.name}</b>.
                 </Notice>
             </Shell>
         );
