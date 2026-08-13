@@ -12,9 +12,8 @@ import './style.css';
 
 // ---- config (custom properties, set in the interface properties panel) -----
 
-const APP_VERSION = 'v1.0.1'; // bump on every release so the interface shows what's live
-const MOVIES_TABLE_ID = 'tblkdQW07gtGW4UK5';
-const DEFAULT_WORKER_URL = 'https://claude-search-proxy.daveairtable.workers.dev';
+const APP_VERSION = 'v1.0.2'; // bump on every release so the interface shows what's live
+const DEFAULT_WORKER_URL = ''; // set per deployment in the interface properties panel
 
 const PAGE_SIZE = 100; // records fetched per Worker/Airtable page
 const RESULTS_PER_PAGE = 100; // results shown per page in the grid
@@ -32,10 +31,7 @@ const IMAGE_FIELD_TYPES = new Set([
 
 // Defined outside the component for a stable identity (required by the SDK).
 function getCustomProperties(base) {
-    const defaultTable =
-        base.getTableByIdIfExists(MOVIES_TABLE_ID) ||
-        base.tables.find((t) => t.name.toLowerCase().includes('movie')) ||
-        base.tables[0];
+    const defaultTable = base.tables[0];
     const imageAllowed = (fld) => IMAGE_FIELD_TYPES.has(fld.config ? fld.config.type : fld.type);
     const defaultImage =
         defaultTable &&
@@ -807,11 +803,11 @@ function App() {
                 <div className="px-4 py-3 space-y-2 overflow-auto" style={{maxHeight: '30%'}}>
                     {messages.length === 0 && (
                         <p className="text-sm text-gray-gray500 dark:text-gray-gray400">
-                            Ask in plain language &mdash; e.g. &ldquo;family films that would suit a trampoline
-                            park&rdquo;. Every record in {table.name} is scanned and ranked (use <b>Record filters</b> to
-                            narrow the set and cut tokens). Results show 100 per page. A follow-up prompt <b>refines</b>{' '}
-                            these results in context; hit <b>New search</b> to start fresh. Click a row to open the
-                            record.
+                            Ask in plain language &mdash; describe what you&rsquo;re looking for and Claude ranks the
+                            records by relevance with a short reason. Every record in {table.name} is scanned (use the{' '}
+                            <b>Filter</b> to narrow the set and cut tokens). Results show 100 per page. A follow-up
+                            prompt <b>refines</b> these results in context; hit <b>New search</b> to start fresh. Click a
+                            row to open the record.
                         </p>
                     )}
                     {messages.map((m, i) => (

@@ -1,10 +1,12 @@
 # Airtable AI Interface: Claude Semantic Search
 
-Airtable's built-in search matches text. It doesn't understand what you mean. Ask it for "family films that would be a good fit for a trampoline park" and it shrugs.
+Airtable's search matches text. It doesn't understand what you mean. Ask it "which of these are a good fit for X" and it just blinks at you.
 
-This is a custom Airtable **interface extension** that fixes that. You type a question in plain language, Claude reads the actual records, ranks them by relevance with a score and a one-line reason, and you get a sortable, filterable table back. It scans the whole table (1,015 movie records in the demo base), 100 results per page, and it never puts an API key in the browser.
+This is a custom Airtable **interface extension** that adds AI semantic search to any base, in any industry. Point it at a table, and anyone using the interface can search in plain language: Claude reads the actual records, ranks them by relevance with a score and a one-line reason, and hands back a sortable, filterable grid (or image-forward cards). The Anthropic key and your Airtable token never touch the browser.
 
-![Claude semantic search — results as movie poster cards, with relevance scores and reasons](docs/cards.png)
+It ships with a movie-catalog demo, but nothing about it is movie-specific. Set the table, the fields, and an optional **skill** that teaches Claude about your data, and it works the same for CRM records, research libraries, product catalogs, case files, applicants, inventory, whatever you keep in Airtable.
+
+![Claude semantic search — results as cards with relevance scores and reasons (movie-catalog demo)](docs/cards.png)
 
 ## How it works
 
@@ -16,22 +18,32 @@ Two pieces, one rule: **the keys stay server-side.**
 │  (@airtable/blocks, React)           │ HTTPS  │  secrets, server-side only:  │
 │                                      │ ─────► │   • ANTHROPIC_API_KEY        │
 │  • Chat-style search + re-prompt     │  POST  │   • AIRTABLE_PAT             │
-│  • Record filters (narrow the scan)  │ /search│                              │
-│  • Results grid: sort/filter/columns │ ◄───── │  1. clarify ambiguous intent │
+│  • Filter (scope) + record filters   │ /search│                              │
+│  • Grid / card results, sort/filter  │ ◄───── │  1. clarify ambiguous intent │
 │  • Live token counter                │  page  │  2. fetch a page (Airtable)  │
 └─────────────────────────────────────┘        │  3. Claude re-ranks the page │
                                                 └──────────────────────────────┘
 ```
 
-The extension is thin on purpose. It sends your prompt and config, then loops one page at a time until the whole scope is scanned, appending results as they come back. The Worker holds both secrets and does the thinking: it optionally asks a clarifying question when your query is ambiguous about which fields you mean, pulls each page from the Airtable REST API, and has Claude score every record in that page for relevance.
+The extension is thin on purpose. It sends your prompt and config, then pages through the records and appends results as they come back. The Worker holds both secrets and does the thinking: it fetches each page from the Airtable REST API, sends it to Claude (Haiku 4.5, with structured outputs so the JSON is always valid), and gets back a relevance score and a short reason for every record.
 
-Why route through a Worker at all, even for one base? Two reasons. The Anthropic key and the Airtable PAT never touch the browser. And you get real offset pagination, so the search returns one page per request instead of dumping the whole table into memory.
+Routing through a Worker keeps the Anthropic key and the Airtable token off the browser, and gives you real offset pagination instead of loading a whole table into memory.
+
+## What you can do
+
+- **Search any table in plain language** and get relevance-ranked results with reasons.
+- **Teach it your domain** with a free-text *skill* (e.g. "these are support tickets; rank by how urgent and unresolved they look").
+- **Two-layer filtering:** a builder-set **locked scope** everyone sees but can't edit, plus per-user filters on top.
+- **Grid or card layout** — cards feature a configurable image field.
+- **Refine in place:** a follow-up prompt re-ranks the current results cheaply instead of re-scanning.
+- **Cost in the open:** a live token counter, and a version stamp so you know what build is live.
+- **Click a result** to open it in the interface's Record Detail layout.
 
 ## The three folders
 
-- **`worker/`** — the Cloudflare Worker. Holds `ANTHROPIC_API_KEY`, `AIRTABLE_PAT`, and a `PROXY_SECRET`. Two endpoints: `/health` and `/search`. Uses Claude Haiku 4.5 with structured outputs so the filter and the ranking come back as guaranteed-valid JSON.
-- **`semantic_search_interface/`** — the Airtable interface extension (`@airtable/blocks@interface-alpha`, React 19, Tailwind). Config lives in the interface's properties panel: search table, Worker URL, a **Search skill** (free-text instructions that teach Claude about this base and how to spot good movie integration opportunities), and a **Base filter** (a config-layer Airtable formula that scopes what any user can search). The Worker's proxy secret goes in a gitignored `frontend/config.js` (copied from `config.example.js`) so it's never in the repo or the properties panel. In use: chat search with **follow-up refine** (a follow-up prompt re-ranks the current results in context, cheap; **New search** starts a fresh scan), a native-style **Filter** to narrow what's scanned, sortable/filterable columns, a **grid ↔ card layout toggle** (cards render a configurable **Promo image field** prominently), a live token counter, and click-a-row to open the record's detail page.
-- **`seed/`** — a one-shot script that fills the demo base with 1,000 movie titles plus linked employees and integration opportunities. Reads the PAT from an environment variable, never from a file.
+- **`worker/`** — the Cloudflare Worker. Base-agnostic: it takes a base id, table id, fields, and schema on each request. Holds `ANTHROPIC_API_KEY`, `AIRTABLE_PAT`, and a `PROXY_SECRET`.
+- **`semantic_search_interface/`** — the Airtable interface extension (`@airtable/blocks@interface-alpha`, React 19, Tailwind). Everything is configured in the interface's properties panel — no code changes to point it at your own data.
+- **`seed/`** — optional scripts that populate the movie-catalog **demo** base. Not needed for your own base; they're just there so the demo has data.
 
 ## Setup
 
@@ -44,13 +56,7 @@ wrangler secret put PROXY_SECRET      # any random string; the extension sends i
 wrangler deploy
 ```
 
-**2. (Optional) Seed a demo base.** From `seed/`:
-
-```bash
-AIRTABLE_PAT=pat_xxx node seed.mjs    # PAT also needs data.records:write
-```
-
-**3. Build the extension.** From `semantic_search_interface/`:
+**2. Build the extension.** From `semantic_search_interface/`:
 
 ```bash
 npm install
@@ -59,14 +65,27 @@ block run        # local dev, or:
 block release    # host it on Airtable
 ```
 
-Add it to an interface page, then set the **Worker URL** (and optionally the **Search skill** and **Promo image field**) in the properties panel.
+**3. Add it to an interface page**, then configure it in the properties panel.
+
+## Configure it for your data (properties panel)
+
+- **Search table** — any table in the base.
+- **Worker URL** — your deployed Worker's URL.
+- **Search skill** — free-text instructions that teach Claude about your records and what "relevant" means for you.
+- **Locked scope filter** — an Airtable formula that scopes what everyone can search (match it to the interface page's Source filter so click-to-open works).
+- **Promo image field** — the field to render as an image on cards.
+
+Display columns, sorting, and per-user filters are all controlled from the extension's own toolbar.
 
 ## Notes
 
-- **Nothing secret is in this repo.** The Anthropic key and PAT live in the Worker (via `wrangler secret`); the Worker's proxy secret lives in the gitignored `frontend/config.js`. The base ID here is an anonymized demo base.
-- **Full scan has a cost.** With no record filters, a search ranks every row, which is roughly one Claude call per 100 records. The token counter in the header makes that visible. Set a Record filter (say `Genre is Family`) to shrink the scan and the bill.
-- **Two filter layers.** The **Base filter** (config) scopes what everyone can search and should match the interface page's **Source** filter, so the element loads exactly what Claude searches. The **Record filters** (front-end) narrow further, per user, AND-ed on top. Because the front-end layer only narrows, every result stays inside the loaded set — which is what lets a click open the interface's Record Detail layout (Airtable custom elements can only expand records loaded via the page's Source).
-- **Search vs. display.** The Record filters narrow *what gets searched* (before fetch). The results box filters *what's shown* (after fetch). Both are there on purpose.
-- **Refining is cheap.** A follow-up prompt re-ranks only the current result set, with no re-scan, so iterating costs a fraction of the first search. New search resets the context.
+- **Nothing secret is in this repo.** The Anthropic key and PAT live in the Worker (via `wrangler secret`); the Worker's proxy secret lives in the gitignored `frontend/config.js`.
+- **Full scan has a cost.** With no filter, a search ranks every row (~one Claude call per 100 records). The token counter makes that visible. Use the Filter to shrink the scan and the bill.
+- **Two filter layers.** The **locked scope** (config) should match the interface page's **Source** filter, so the element loads exactly what Claude searches. The **Filter** (front-end) narrows further, per user. Because it only narrows, every result stays in the loaded set — which is what lets a click open the interface's Record Detail layout (custom elements can only expand records their page Source loaded).
+- **Refining is cheap.** A follow-up prompt re-ranks only the current result set, no re-scan.
 
-Built as a demo of what an AI-native Airtable interface can do. Fork it, point it at your own base, and go.
+## Roadmap
+
+- **Cross-table search** — search several tables in a base at once, merged into a standardized results grid (Source table · Record · Score · Why). Today it searches one configured table; the Worker is already base/table-agnostic, so this is a client-side extension of the search loop.
+
+Fork it, point it at your own base, and give your data a search box that actually listens.
