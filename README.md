@@ -4,6 +4,8 @@ Airtable's built-in search matches text. It doesn't understand what you mean. As
 
 This is a custom Airtable **interface extension** that fixes that. You type a question in plain language, Claude reads the actual records, ranks them by relevance with a score and a one-line reason, and you get a sortable, filterable table back. It scans the whole table (1,015 movie records in the demo base), 100 results per page, and it never puts an API key in the browser.
 
+![Claude semantic search — results as movie poster cards, with relevance scores and reasons](docs/cards.png)
+
 ## How it works
 
 Two pieces, one rule: **the keys stay server-side.**
