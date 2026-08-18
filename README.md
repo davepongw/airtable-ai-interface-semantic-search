@@ -43,7 +43,7 @@ Routing through a Worker keeps the Anthropic key and the Airtable token off the 
 
 - **`worker/`** — the Cloudflare Worker. Base-agnostic: it takes a base id, table id, fields, and schema on each request. Holds `ANTHROPIC_API_KEY`, `AIRTABLE_PAT`, and a `PROXY_SECRET`.
 - **`semantic_search_interface/`** — the Airtable interface extension (`@airtable/blocks@interface-alpha`, React 19, Tailwind). Everything is configured in the interface's properties panel — no code changes to point it at your own data.
-- **`seed/`** — optional scripts that populate the movie-catalog **demo** base. Not needed for your own base; they're just there so the demo has data.
+- **`seed/`** — optional scripts that populate the movie-catalog **demo** base. Not needed for your own base; they're just there so the demo has data. There's a public copy of the demo base here: [movie-catalog demo base](https://airtable.com/app4XyteOsYiLOAsc/shrMzO8jz5m4wRzkD).
 
 ## Setup
 

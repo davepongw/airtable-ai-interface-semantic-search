@@ -189,11 +189,11 @@ This is a **stateless HTTPS microservice**. No database, no persistent storage, 
 | secrets          | secret manager for the Anthropic key, the Airtable credential, and the proxy secret |
 
 ### Steps
-1. **Provision the host.** For Netflix specifically: request an isolated GenAI Platform
-   account via `go/cis-intake`, flagged as a *Claude-powered Airtable semantic-search
-   integration*. That's the paved path for an agentic workload making authenticated API
-   calls — you get provisioned, stateless compute plus proper identity/token management
-   instead of standing up your own box.
+1. **Provision the host.** Request stateless compute on whatever your organization treats as
+   the paved path for a GenAI-adjacent workload making authenticated API calls — an internal
+   platform account, a managed serverless/FaaS target, or a small container. Flag it as a
+   *Claude-powered Airtable semantic-search integration* so it's scoped with provisioned
+   compute plus proper identity/token management, rather than a box you stand up and babysit.
 2. **Port the proxy.** [`worker/src/index.js`](../worker/src/index.js) is a Cloudflare
    module worker (`export default { async fetch(request, env) {…} }`). It uses only the
    standard `fetch` API and reads secrets from `env`. To run it elsewhere, wrap the same
@@ -206,7 +206,7 @@ This is a **stateless HTTPS microservice**. No database, no persistent storage, 
      change the auth header to whatever it expects (instead of `x-api-key`). This is the
      preferred setup — you never hold the raw Anthropic key.
    - **Airtable** — replace the personal PAT with a **service-account / non-human identity**
-     credential (for Netflix, an `svc.netflix.net` account). It still goes in
+     credential (whatever your org uses for automation identities). It still goes in
      `Authorization: Bearer …`; it's just not a person's token anymore.
    - **Proxy secret** — keep `PROXY_SECRET` as a shared-secret gate, **or** drop it and let
      your platform's own identity/auth (mTLS, gateway auth) protect the endpoint. If you drop
@@ -245,7 +245,12 @@ toolbar.
 
 ## Copy-paste recreation prompt (hand this to an AI coding agent)
 
-> Build a Claude-powered semantic search tool for Airtable, in two parts.
+> Build a Claude-powered semantic search tool for Airtable, in two parts. Use the reference
+> implementation at `https://github.com/davepongw/airtable-ai-interface-semantic-search` as
+> the example build — the `worker/` proxy there is the spec, and `docs/RECREATE.md` documents
+> the proxy contract. Build and test against the public example base (a movie-catalog demo) at
+> `https://airtable.com/app4XyteOsYiLOAsc/shrMzO8jz5m4wRzkD` (base id `app4XyteOsYiLOAsc`),
+> then point it at our own base by changing only the properties panel — no code changes.
 >
 > **Part 1 — an Airtable interface extension** (`@airtable/blocks@interface-alpha`, React 19,
 > Tailwind; scaffold with the Blocks CLI `block init` interface-extension template). It runs
