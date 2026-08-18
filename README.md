@@ -67,6 +67,11 @@ block release    # host it on Airtable
 
 **3. Add it to an interface page**, then configure it in the properties panel.
 
+> **Want to recreate this on your own infrastructure?** [`docs/RECREATE.md`](docs/RECREATE.md)
+> is a self-contained guide: the proxy contract, how it was originally built on a Cloudflare
+> Worker, and how to swap in your own server so your credentials never leave your infra. It
+> ends with a copy-paste prompt you can hand to an AI coding agent to rebuild it from scratch.
+
 ## Configure it for your data (properties panel)
 
 - **Search table** — any table in the base.
