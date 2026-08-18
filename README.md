@@ -45,6 +45,21 @@ Routing through a Worker keeps the Anthropic key and the Airtable token off the 
 - **`semantic_search_interface/`** — the Airtable interface extension (`@airtable/blocks@interface-alpha`, React 19, Tailwind). Everything is configured in the interface's properties panel — no code changes to point it at your own data.
 - **`seed/`** — optional scripts that populate the movie-catalog **demo** base. Not needed for your own base; they're just there so the demo has data. There's a public copy of the demo base here: [movie-catalog demo base](https://airtable.com/app4XyteOsYiLOAsc/shrMzO8jz5m4wRzkD).
 
+## Requirements
+
+Interface extensions are an Airtable **open-beta** feature, so a couple of things are worth
+knowing before you build:
+
+- **Plan tier.** Building and releasing interface extensions requires a **Team, Business, or
+  Enterprise Scale** plan. Free and Plus plans can't create them.
+- **Beta SDK.** This uses `@airtable/blocks@interface-alpha` (the interface-extensions SDK),
+  not the stable `@airtable/blocks` (`latest`) — the stable line is for base/dashboard
+  extensions and doesn't support interface extensions. The API surface can still change, and
+  `interface-alpha` is a moving tag, so a fresh `npm install` may pull a newer build than the
+  one this repo was written against.
+- **Not internal-only.** Nothing here depends on Airtable-internal capabilities — it's the
+  same public SDK, CLI, and builder-hub flow available to any qualifying account.
+
 ## Setup
 
 **1. Deploy the Worker.** From `worker/`:
